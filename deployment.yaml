@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-api-deployment
+  labels:
+    app: iris-api
+spec:
+  replicas: 1 # Start with 1 replica for simplicity, can scale later
+  selector:
+    matchLabels:
+      app: iris-api
+  template:
+    metadata:
+      labels:
+        app: iris-api
+    spec:
+      containers:
+      - name: iris-api-container
+        image: us-central1-docker.pkg.dev/rapid-spider-461505-b4/iris-api-repo/iris-api:latest # <-- REPLACE THIS LINE WITH YOUR ACTUAL IMAGE PATH
+        ports:
+        - containerPort: 8000 # The port your FastAPI app listens on inside the container
+        resources: # Optional: Good practice for resource management
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
