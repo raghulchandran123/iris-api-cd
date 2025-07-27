@@ -1,7 +1,32 @@
-permissions:
+name: Build and Deploy Iris API to GKE
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+
+# Environment variables available to all jobs and steps
+env:
+  GCP_PROJECT_ID: rapid-spider-461505-b4      # Your actual GCP Project ID
+  GKE_CLUSTER: iris-cluster                 # Your actual GKE cluster name
+  GKE_REGION: us-central1                   # Your GKE cluster region (for get-credentials if you used --region)
+  GKE_ZONE: us-central1-c                   # Your GKE cluster zone (if using --zone)
+  ARTIFACT_REGISTRY_HOST: us-central1-docker.pkg.dev # Host for Artifact Registry
+  REPO_NAME: iris-repo                      # Your Artifact Registry repo name
+  IMAGE_NAME: iris-api                      # Your Docker image name
+  MODEL_BUCKET_URI: gs://mlops-course-mlopsweek1-unique/my-models/iris-classifier-week-1/model.joblib # Your model's GCS path
+  SERVICE_ACCOUNT_EMAIL: github-actions-sa@rapid-spider-461505-b4.iam.gserviceaccount.com # Your created Service Account email
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    permissions:
       contents: write # Needed for CML to post comment
-      # id-token: write # No longer needed for WIF
-# ...
+      # id-token: write # Not needed for Service Account Key authentication
+
+    timeout-minutes: 20 # Prevent runaway jobs
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -9,6 +34,112 @@ permissions:
       - name: Authenticate with GCP using Service Account Key
         run: |
           echo "🔐 Decoding GCP credentials..."
+          # GCP_SA_KEY_B64 is a GitHub Secret you must create in your repo settings
           echo "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode > gcp-key.json
           gcloud auth activate-service-account --key-file=gcp-key.json
           echo "✅ GCP authenticated."
+
+      - name: Set up Google Cloud SDK and Install GKE Auth Plugin
+        # This action installs gcloud, kubectl, and the gke-gcloud-auth-plugin
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'gke-gcloud-auth-plugin'
+
+      - name: Download Model from GCS
+        # Ensure the 'api' directory exists where Dockerfile and app code reside
+        run: |
+          echo "📥 Downloading model from ${{ env.MODEL_BUCKET_URI }}"
+          mkdir -p api
+          gcloud storage cp "${{ env.MODEL_BUCKET_URI }}" ./api/model.joblib
+          echo "✅ Model downloaded successfully."
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          echo "🐳 Configuring Docker for Artifact Registry..."
+          gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY_HOST }}
+          echo "✅ Docker configured."
+
+      - name: Build and Push Docker Image
+        run: |
+          echo "🔨 Building Docker image from ./api context..."
+          IMAGE_TAG_SHA="${{ env.ARTIFACT_REGISTRY_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          IMAGE_TAG_LATEST="${{ env.ARTIFACT_REGISTRY_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:latest"
+
+          # Build context is the 'api' directory where Dockerfile, app.py, model, requirements.txt are
+          docker build -t "$IMAGE_TAG_SHA" -t "$IMAGE_TAG_LATEST" ./api 
+
+          echo "📤 Pushing Docker images..."
+          docker push "$IMAGE_TAG_SHA"
+          docker push "$IMAGE_TAG_LATEST"
+
+          echo "✅ Docker images built and pushed."
+          echo "IMAGE_TAG_SHA=$IMAGE_TAG_SHA" >> $GITHUB_ENV # Store for later steps
+
+      - name: Get GKE credentials
+        run: |
+          echo "🔗 Configuring kubectl for GKE cluster..."
+          # Use GKE_ZONE for zonal clusters
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.GCP_PROJECT_ID }}
+          echo "✅ GKE credentials configured."
+
+      - name: Deploy to GKE
+        run: |
+          echo "🚀 Deploying to GKE..."
+          # Replace the image tag in deployment.yaml with the new SHA-tagged image
+          # sed -i "s|image: .*|image: ${{ env.IMAGE_TAG_SHA }}|g" deployment.yaml
+          # --- Alternative sed if the above has issues (e.g., if image line has extra comments) ---
+          # Find the line that starts with '        image:' and replace it
+          sed -i '/^ *image:/c\        image: ${{ env.IMAGE_TAG_SHA }}' deployment.yaml
+
+          echo "📋 Applying updated deployment.yaml:"
+          cat deployment.yaml # Print the modified YAML for debugging
+
+          kubectl apply -f deployment.yaml
+          kubectl apply -f service.yaml
+
+          echo "⏳ Waiting for deployment rollout to complete..."
+          kubectl rollout status deployment/iris-api-deployment --timeout=300s
+          echo "✅ Deployment completed successfully."
+
+      - name: Install CML and Report Status
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub's default token for repo access
+        run: |
+          echo "📋 Installing CML via npm..."
+          npm install -g @dvcorg/cml
+
+          echo "⏳ Waiting for LoadBalancer to get an external IP..."
+          EXTERNAL_IP=""
+          # Loop up to 12 times with 30s sleep = 6 minutes total wait time
+          for i in {1..12}; do
+            sleep 30
+            EXTERNAL_IP=$(kubectl get service iris-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ -n "$EXTERNAL_IP" ]; then
+              echo "✅ External IP obtained: $EXTERNAL_IP"
+              break
+            fi
+            echo "🔍 Attempt $i: Still waiting for external IP..."
+          done
+
+          if [ -z "$EXTERNAL_IP" ]; then
+            echo "❌ Failed to get external IP after 6 minutes."
+            exit 1 # Fail the workflow if no IP obtained
+          fi
+
+          echo "📝 Creating CML report..."
+          echo "## ✅ Deployment Successful" > report.md
+          echo "A new version of the Iris API has been deployed." >> report.md
+          # Use double-colon syntax for SHA short (e.g., ${{ github.sha::7 }})
+          echo "- *Commit:* [${{ github.sha::7 }}](${{ github.event.repository.html_url }}/commit/${{ github.sha }})" >> report.md
+          echo "- *Image Tag:* \`${{ env.IMAGE_TAG_SHA }}\`" >> report.md # Markdown for code
+          echo "- *API Endpoint:* http://$EXTERNAL_IP" >> report.md
+          echo " " >> report.md
+          echo "### Test with cURL:" >> report.md
+          echo "\`\`\`bash" >> report.md
+          echo "curl -X 'POST' 'http://$EXTERNAL_IP/predict/' -H 'Content-Type: application/json' -d '{\"sepal_length\": 5.1, \"sepal_width\": 3.5, \"petal_length\": 1.4, \"petal_width\": 0.2}'" >> report.md
+          echo "\`\`\`" >> report.md
+
+          npx @dvcorg/cml comment create report.md
+          echo "✅ CML report posted."
+
