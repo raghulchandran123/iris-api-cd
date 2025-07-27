@@ -14,7 +14,7 @@ env:
   ARTIFACT_REGISTRY_HOST: us-central1-docker.pkg.dev # Host for Artifact Registry
   REPO_NAME: iris-repo                      # Your Artifact Registry repo name
   IMAGE_NAME: iris-api                      # Your Docker image name
-  MODEL_BUCKET_URI: gs://mlops-course-mlopsweek1-unique/my-models/iris-classifier-week-1/model.joblib # Your model's GCS path
+  MODEL_BUCKET_URI: gs://mlops-course-rapid-spider-461505-b4-week-1/my-models/iris-classifier-week-1/model.joblib # Your model's GCS path
   SERVICE_ACCOUNT_EMAIL: github-actions-sa@rapid-spider-461505-b4.iam.gserviceaccount.com # Your created Service Account email
 
 jobs:
