@@ -14,7 +14,7 @@ env:
   ARTIFACT_REGISTRY_HOST: us-central1-docker.pkg.dev # Host for Artifact Registry
   REPO_NAME: iris-repo                      # Your Artifact Registry repo name
   IMAGE_NAME: iris-api                      # Your Docker image name
-  MODEL_BUCKET_URI: gs://mlops-course-rapid-spider-461505-b4-week-1/my-models/iris-classifier-week-1/model.joblib # Your model's GCS path
+  MODEL_BUCKET_URI: gs://mlops-course-mlopsweek1-unique/my-models/iris-classifier-week-1/model.joblib # Your model's GCS path
   SERVICE_ACCOUNT_EMAIL: github-actions-sa@rapid-spider-461505-b4.iam.gserviceaccount.com # Your created Service Account email
 
 jobs:
@@ -47,11 +47,10 @@ jobs:
           install_components: 'gke-gcloud-auth-plugin'
 
       - name: Download Model from GCS
-        # Ensure the 'api' directory exists where Dockerfile and app code reside
+        # **IMPORTANT CHANGE:** Model is downloaded to the repo root for Docker build context
         run: |
-          DOWNLOAD_PATH="./api/model.joblib"
+          DOWNLOAD_PATH="./model.joblib" # Download to repo root
           echo "📥 Downloading model from ${{ env.MODEL_BUCKET_URI }} to $DOWNLOAD_PATH..."
-          mkdir -p $(dirname $DOWNLOAD_PATH) # Ensure target directory exists (e.g., ./api)
           gcloud storage cp "${{ env.MODEL_BUCKET_URI }}" "$DOWNLOAD_PATH"
           # Add a verification step
           if [ -f "$DOWNLOAD_PATH" ]; then
@@ -70,12 +69,12 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          echo "🔨 Building Docker image from ./api context..."
+          echo "🔨 Building Docker image using Dockerfile from ./api/ and context from repo root..."
           IMAGE_TAG_SHA="${{ env.ARTIFACT_REGISTRY_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           IMAGE_TAG_LATEST="${{ env.ARTIFACT_REGISTRY_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:latest"
 
-          # Build context is the 'api' directory where Dockerfile, app.py, model, requirements.txt are
-          docker build -t "$IMAGE_TAG_SHA" -t "$IMAGE_TAG_LATEST" ./api 
+          # **IMPORTANT CHANGE:** Use -f for Dockerfile path and . for build context
+          docker build -f ./api/Dockerfile -t "$IMAGE_TAG_SHA" -t "$IMAGE_TAG_LATEST" .
 
           echo "📤 Pushing Docker images..."
           docker push "$IMAGE_TAG_SHA"
@@ -95,7 +94,6 @@ jobs:
         run: |
           echo "🚀 Deploying to GKE..."
           # Replace the image tag in deployment.yaml with the new SHA-tagged image
-          # Use the robust sed command to replace the image line based on its prefix
           sed -i '/^ *image:/c\        image: ${{ env.IMAGE_TAG_SHA }}' deployment.yaml
 
           echo "📋 Applying updated deployment.yaml:"
