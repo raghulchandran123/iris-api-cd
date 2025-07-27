@@ -12,7 +12,7 @@ env:
   GKE_REGION: us-central1                   # Your GKE cluster region (for get-credentials if you used --region)
   GKE_ZONE: us-central1-c                   # Your GKE cluster zone (if using --zone)
   ARTIFACT_REGISTRY_HOST: us-central1-docker.pkg.dev # Host for Artifact Registry
-  REPO_NAME: iris-repo                      # Your Artifact Registry repo name
+  REPO_NAME: iris-api-repo                      # Your Artifact Registry repo name
   IMAGE_NAME: iris-api                      # Your Docker image name
   MODEL_BUCKET_URI: gs://mlops-course-rapid-spider-461505-b4-week-1/my-models/iris-classifier-week-1/model.joblib # Your model's GCS path
   SERVICE_ACCOUNT_EMAIL: github-actions-sa@rapid-spider-461505-b4.iam.gserviceaccount.com # Your created Service Account email
