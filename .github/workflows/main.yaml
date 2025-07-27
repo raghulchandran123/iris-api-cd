@@ -1,0 +1,14 @@
+permissions:
+      contents: write # Needed for CML to post comment
+      # id-token: write # No longer needed for WIF
+# ...
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate with GCP using Service Account Key
+        run: |
+          echo "🔐 Decoding GCP credentials..."
+          echo "${{ secrets.GCP_SA_KEY_B64 }}" | base64 --decode > gcp-key.json
+          gcloud auth activate-service-account --key-file=gcp-key.json
+          echo "✅ GCP authenticated."
