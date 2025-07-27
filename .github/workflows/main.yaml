@@ -49,10 +49,18 @@ jobs:
       - name: Download Model from GCS
         # Ensure the 'api' directory exists where Dockerfile and app code reside
         run: |
-          echo "📥 Downloading model from ${{ env.MODEL_BUCKET_URI }}"
-          mkdir -p api
-          gcloud storage cp "${{ env.MODEL_BUCKET_URI }}" ./api/model.joblib
-          echo "✅ Model downloaded successfully."
+          DOWNLOAD_PATH="./api/model.joblib"
+          echo "📥 Downloading model from ${{ env.MODEL_BUCKET_URI }} to $DOWNLOAD_PATH..."
+          mkdir -p $(dirname $DOWNLOAD_PATH) # Ensure target directory exists (e.g., ./api)
+          gcloud storage cp "${{ env.MODEL_BUCKET_URI }}" "$DOWNLOAD_PATH"
+          # Add a verification step
+          if [ -f "$DOWNLOAD_PATH" ]; then
+              echo "✅ Model downloaded successfully to $DOWNLOAD_PATH."
+              ls -lh "$DOWNLOAD_PATH" # Show file size and permissions
+          else
+              echo "❌ Error: model.joblib not found at $DOWNLOAD_PATH after download!"
+              exit 1 # Fail fast if download failed
+          fi
 
       - name: Configure Docker for Artifact Registry
         run: |
