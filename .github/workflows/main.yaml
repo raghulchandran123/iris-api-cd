@@ -131,7 +131,7 @@ jobs:
           echo "## ✅ Deployment Successful" > report.md
           echo "A new version of the Iris API has been deployed." >> report.md
           # Use double-colon syntax for SHA short (e.g., ${{ github.sha::7 }})
-          echo "- *Commit:* [${{ github.sha::7 }}](${{ github.event.repository.html_url }}/commit/${{ github.sha }})" >> report.md
+          echo "- *Commit:* [${{ github.sha }}](${{ github.event.repository.html_url }}/commit/${{ github.sha }})" >> report.md
           echo "- *Image Tag:* \`${{ env.IMAGE_TAG_SHA }}\`" >> report.md # Markdown for code
           echo "- *API Endpoint:* http://$EXTERNAL_IP" >> report.md
           echo " " >> report.md
