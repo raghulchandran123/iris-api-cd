@@ -87,9 +87,7 @@ jobs:
         run: |
           echo "🚀 Deploying to GKE..."
           # Replace the image tag in deployment.yaml with the new SHA-tagged image
-          # sed -i "s|image: .*|image: ${{ env.IMAGE_TAG_SHA }}|g" deployment.yaml
-          # --- Alternative sed if the above has issues (e.g., if image line has extra comments) ---
-          # Find the line that starts with '        image:' and replace it
+          # Use the robust sed command to replace the image line based on its prefix
           sed -i '/^ *image:/c\        image: ${{ env.IMAGE_TAG_SHA }}' deployment.yaml
 
           echo "📋 Applying updated deployment.yaml:"
@@ -130,7 +128,7 @@ jobs:
           echo "📝 Creating CML report..."
           echo "## ✅ Deployment Successful" > report.md
           echo "A new version of the Iris API has been deployed." >> report.md
-          # Use double-colon syntax for SHA short (e.g., ${{ github.sha::7 }})
+          # Fixed github.sha expression for CML report
           echo "- *Commit:* [${{ github.sha }}](${{ github.event.repository.html_url }}/commit/${{ github.sha }})" >> report.md
           echo "- *Image Tag:* \`${{ env.IMAGE_TAG_SHA }}\`" >> report.md # Markdown for code
           echo "- *API Endpoint:* http://$EXTERNAL_IP" >> report.md
@@ -142,4 +140,3 @@ jobs:
 
           npx @dvcorg/cml comment create report.md
           echo "✅ CML report posted."
-
